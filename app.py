@@ -1,10 +1,37 @@
 from flask import Flask, request, jsonify
-from config import genai, MODEL_NAME
+from config import model
 from content_fetcher import fetch_multiple_pages
 from flask_cors import CORS
+from flasgger import Swagger
 
 app = Flask(__name__)
 CORS(app)
+
+
+swagger_config = {
+    "headers": [],
+    "specs": [
+        {
+            "endpoint": 'apispec',
+            "route": '/apispec.json',
+            "rule_filter": lambda rule: True,
+            "model_filter": lambda tag: True,
+        }
+    ],
+    "static_url_path": "/flasgger_static",
+    "swagger_ui": True,
+    "specs_route": "/docs"
+}
+
+swagger_template = {
+    "info": {
+        "title": "Arrow Conveyancing Chat API",
+        "description": "API for Arrow Conveyancing chatbot assistant",
+        "version": "1.0.0"
+    }
+}
+
+swagger = Swagger(app, config=swagger_config, template=swagger_template)
 
 SITE_URLS = [
     "https://www.arrowconveyancing.co.uk/",
@@ -25,6 +52,50 @@ print("Website Content loaded")
 
 @app.route("/api/chat", methods=["POST"])
 def chat():
+    """
+    Chat endpoint for Arrow Conveyancing assistant
+    ---
+    tags:
+      - Chat
+    parameters:
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          required:
+            - question
+          properties:
+            question:
+              type: string
+              description: User's question
+              example: "What services do you offer?"
+    responses:
+      200:
+        description: Successful response
+        schema:
+          type: object
+          properties:
+            answer:
+              type: string
+              description: AI-generated response
+      400:
+        description: Bad request - missing question
+        schema:
+          type: object
+          properties:
+            error:
+              type: string
+      500:
+        description: Server error
+        schema:
+          type: object
+          properties:
+            error:
+              type: string
+            details:
+              type: string
+    """
     data = request.get_json()
 
     if not data or "question" not in data:
@@ -33,8 +104,6 @@ def chat():
     question = data["question"]
 
     try:
-        model = genai.GenerativeModel(MODEL_NAME)
-
         prompt = f"""
 You are a chatbot assistant for arrow conveyancing company.
 Your name is Arrow chat.
@@ -46,9 +115,7 @@ COMPANY SITE CONTENT:
 USER QUESTION: 
 {question}"""
 
-        response = model.generate_content(
-            prompt
-        )
+        response = model.generate_content(prompt)
         return jsonify({
             "answer": response.text
         })
