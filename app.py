@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 from config import genai, MODEL_NAME
 from content_fetcher import fetch_multiple_pages
 from flask_cors import CORS
+import re
 
 app = Flask(__name__)
 CORS(app)
@@ -37,20 +38,32 @@ def chat():
 
         prompt = f"""
 You are a chatbot assistant for arrow conveyancing company.
-Your name is Arrow chat.
-Answer using this information plus including all your knowledeg base.
-
-COMPANY SITE CONTENT:
+Answer using the COMPANY SITE CONTENT plus including all your knowledge base.
 {SITE_CONTENT}
+
 
 USER QUESTION: 
 {question}"""
 
-        response = model.generate_content(
-            prompt
-        )
+        response = model.generate_content(prompt)
+        raw_text = response.text
+
+        clean_text = re.sub(r":\s*\n\s*\n+", ":\n", raw_text)
+
+        clean_text = re.sub(r"\n\s*\n+", "\n", clean_text)
+
+        clean_text = re.sub(r":\n([^\-\*\n])", r":\n- \1", clean_text)
+
+        clean_text = re.sub(r"\n\*\s+", "\n- ", clean_text)
+
+        clean_text = re.sub(r"\n[ \t]+", "\n", clean_text)
+
+        clean_text = clean_text.replace(":", "")
+        clean_text = re.sub(r"These include\b", "These", clean_text, flags=re.IGNORECASE)
+
+        clean_text = clean_text.strip()
         return jsonify({
-            "answer": response.text
+            "answer": clean_text
         })
     
     except Exception as e:
