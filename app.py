@@ -36,39 +36,38 @@ def chat():
     try:
         model = genai.GenerativeModel(MODEL_NAME)
 
+        content = SITE_CONTENT[:10000]
+
         prompt = f"""
-You are a chatbot assistant for arrow conveyancing company.
-Answer using the COMPANY SITE CONTENT plus including all your knowledge base.
-{SITE_CONTENT}
+    You are a chatbot assistant for arrow conveyancing company.
+    Answer using the COMPANY SITE CONTENT plus your knowledge.
 
+    {content}
 
-USER QUESTION: 
-{question}"""
+    USER QUESTION:
+    {question}
+    """
 
         response = model.generate_content(prompt)
-        raw_text = response.text
 
-        clean_text = re.sub(r":\s*\n\s*\n+", ":\n", raw_text)
+        print("MODEL RESPONSE:", response)
 
-        clean_text = re.sub(r"\n\s*\n+", "\n", clean_text)
+        raw_text = getattr(response, "text", None)
 
-        clean_text = re.sub(r":\n([^\-\*\n])", r":\n- \1", clean_text)
+        if not raw_text:
+            return jsonify({
+                "error": "Model returned empty response",
+                "details": str(response)
+            }), 500
 
-        clean_text = re.sub(r"\n\*\s+", "\n- ", clean_text)
+        clean_text = raw_text.strip()
 
-        clean_text = re.sub(r"\n[ \t]+", "\n", clean_text)
+        return jsonify({"answer": clean_text})
 
-        clean_text = clean_text.replace(":", "")
-        clean_text = re.sub(r"These include\b", "These", clean_text, flags=re.IGNORECASE)
-
-        clean_text = clean_text.strip()
-        return jsonify({
-            "answer": clean_text
-        })
-    
     except Exception as e:
+        print("ERROR:", str(e))
         return jsonify({
-            "error": "Failed to generate response try again later",
+            "error": "Failed to generate response",
             "details": str(e)
         }), 500
     
