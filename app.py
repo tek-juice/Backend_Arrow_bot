@@ -1,75 +1,127 @@
-from flask import Flask, request, jsonify
-from config import genai, MODEL_NAME
-from content_fetcher import fetch_multiple_pages
+from flask import Flask, request, jsonify, Response, stream_with_context
 from flask_cors import CORS
-import re
+from flasgger import Swagger, swag_from
+
+from scraper import scrape_entire_site
+from llm import stream_ollama  # IMPORTANT: must yield tokens
 
 app = Flask(__name__)
 CORS(app)
 
-SITE_URLS = [
-    "https://www.arrowconveyancing.co.uk/",
-    "https://www.arrowconveyancing.co.uk/services",
-    "https://www.arrowconveyancing.co.uk/intermediaries",
-    "https://www.arrowconveyancing.co.uk/articles",
-    "https://www.arrowconveyancing.co.uk/minor-pages/careers",
-    "https://www.arrowconveyancing.co.uk/minor-pages/careers#open-positions",
-    "https://www.arrowconveyancing.co.uk/articles",
-    "https://www.arrowconveyancing.co.uk/our-team",
-    "https://www.arrowconveyancing.co.uk/contact",
-    
-]
+# ✅ FIX: proper swagger config so /apidocs works
+swagger_config = {
+    "headers": [],
+    "specs": [
+        {
+            "endpoint": "apispec",
+            "route": "/apispec.json",
+            "rule_filter": lambda rule: True,
+            "model_filter": lambda tag: True,
+        }
+    ],
+    "static_url_path": "/flasgger_static",
+    "swagger_ui": True,
+    "specs_route": "/apidocs/"
+}
 
-print("Loading website content....")
-SITE_CONTENT = fetch_multiple_pages(SITE_URLS)
-print("Website Content loaded")
+swagger = Swagger(app, config=swagger_config)
 
-@app.route("/api/chat", methods=["POST"])
+print("loading website data...")
+SITE_CONTEXT = scrape_entire_site()
+print("website loaded!")
+
+
+# =========================
+# NON-STREAM CHAT (optional)
+# =========================
+@app.route("/chat", methods=["POST"])
+@swag_from({
+    "tags": ["Chat"],
+    "description": "Ask question about Arrow Conveyancing website",
+    "parameters": [
+        {
+            "name": "body",
+            "in": "body",
+            "required": True,
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "question": {"type": "string", "example": "What services do they offer?"}
+                },
+                "required": ["question"]
+            }
+        }
+    ],
+    "responses": {
+        200: {"description": "AI response"}
+    }
+})
 def chat():
-    data = request.get_json()
+    data = request.get_json() or {}
+    question = data.get("question")
 
-    if not data or "question" not in data:
-        return jsonify({"error": "Question is required"}), 400
-    
-    question = data["question"]
+    if not question:
+        return jsonify({"error": "question is required"}), 400
 
-    try:
-        model = genai.GenerativeModel(MODEL_NAME)
+    answer = stream_ollama(SITE_CONTEXT, question, stream=False)
+    return jsonify({"answer": answer})
 
-        content = SITE_CONTENT[:10000]
 
-        prompt = f"""
-    You are a chatbot assistant for arrow conveyancing company.
-    Answer using the COMPANY SITE CONTENT plus your knowledge.
+# =========================
+# STREAMING CHAT (REALTIME)
+# =========================
+@app.route("/chat-stream", methods=["POST"])
+@swag_from({
+    "tags": ["Chat Streaming"],
+    "description": "Stream AI response token-by-token",
+    "parameters": [
+        {
+            "name": "body",
+            "in": "body",
+            "required": True,
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "question": {"type": "string"}
+                },
+                "required": ["question"]
+            }
+        }
+    ],
+    "responses": {
+        200: {
+            "description": "Streaming response (text/plain)"
+        }
+    }
+})
+def chat_stream():
+    data = request.get_json() or {}
+    question = data.get("question")
 
-    {content}
+    if not question:
+        return jsonify({"error": "question is required"}), 400
 
-    USER QUESTION:
-    {question}
-    """
+    def generate():
+        # stream word/token chunks
+        for chunk in stream_ollama(SITE_CONTEXT, question, stream=True):
+            yield chunk
 
-        response = model.generate_content(prompt)
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/plain"
+    )
 
-        print("MODEL RESPONSE:", response)
 
-        raw_text = getattr(response, "text", None)
+# =========================
+# HEALTH CHECK
+# =========================
+@app.route("/")
+def home():
+    return jsonify({
+        "status": "running",
+        "swagger": "/apidocs/"
+    })
 
-        if not raw_text:
-            return jsonify({
-                "error": "Model returned empty response",
-                "details": str(response)
-            }), 500
 
-        clean_text = raw_text.strip()
-
-        return jsonify({"answer": clean_text})
-
-    except Exception as e:
-        print("ERROR:", str(e))
-        return jsonify({
-            "error": "Failed to generate response",
-            "details": str(e)
-        }), 500
-    
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=True, port=5000, threaded=True)

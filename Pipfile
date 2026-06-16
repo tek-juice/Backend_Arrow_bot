@@ -4,7 +4,6 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-
 python-dotenv = "*"
 google-generativeai = "*"
 requests = "*"
@@ -13,6 +12,8 @@ playwright = "*"
 flask = "*"
 flask-cors = "*"
 gunicorn = "*"
+ollama = "*"
+flasgger = "*"
 
 [dev-packages]
 
