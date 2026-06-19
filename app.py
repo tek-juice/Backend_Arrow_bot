@@ -3,12 +3,14 @@ from flask_cors import CORS
 from flasgger import Swagger, swag_from
 
 from scraper import scrape_entire_site
-from llm import stream_ollama  # IMPORTANT: must yield tokens
+from llm import stream_ollama
+
+from warmModel import warmup_model
 
 app = Flask(__name__)
 CORS(app)
 
-# ✅ FIX: proper swagger config so /apidocs works
+
 swagger_config = {
     "headers": [],
     "specs": [
@@ -30,10 +32,9 @@ print("loading website data...")
 SITE_CONTEXT = scrape_entire_site()
 print("website loaded!")
 
+warmup_model()
 
-# =========================
-# NON-STREAM CHAT (optional)
-# =========================
+
 @app.route("/chat", methods=["POST"])
 @swag_from({
     "tags": ["Chat"],
@@ -46,7 +47,7 @@ print("website loaded!")
             "schema": {
                 "type": "object",
                 "properties": {
-                    "question": {"type": "string", "example": "What services do they offer?"}
+                    "question": {"type": "string"}
                 },
                 "required": ["question"]
             }
@@ -63,13 +64,12 @@ def chat():
     if not question:
         return jsonify({"error": "question is required"}), 400
 
-    answer = stream_ollama(SITE_CONTEXT, question, stream=False)
+   
+    answer = "".join(stream_ollama(SITE_CONTEXT, question))
+
     return jsonify({"answer": answer})
 
 
-# =========================
-# STREAMING CHAT (REALTIME)
-# =========================
 @app.route("/chat-stream", methods=["POST"])
 @swag_from({
     "tags": ["Chat Streaming"],
@@ -89,9 +89,7 @@ def chat():
         }
     ],
     "responses": {
-        200: {
-            "description": "Streaming response (text/plain)"
-        }
+        200: {"description": "Streaming response"}
     }
 })
 def chat_stream():
@@ -102,8 +100,7 @@ def chat_stream():
         return jsonify({"error": "question is required"}), 400
 
     def generate():
-        # stream word/token chunks
-        for chunk in stream_ollama(SITE_CONTEXT, question, stream=True):
+        for chunk in stream_ollama(SITE_CONTEXT, question):
             yield chunk
 
     return Response(
@@ -111,10 +108,6 @@ def chat_stream():
         mimetype="text/plain"
     )
 
-
-# =========================
-# HEALTH CHECK
-# =========================
 @app.route("/")
 def home():
     return jsonify({
@@ -124,4 +117,9 @@ def home():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000, threaded=True)
+    app.run(
+        debug=True,
+        port=5000,
+        threaded=True,
+        use_reloader=False  # IMPORTANT: prevents model reload on restart loops
+    )

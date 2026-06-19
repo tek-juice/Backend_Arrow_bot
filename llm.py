@@ -1,12 +1,11 @@
 import ollama
 
-
-def stream_ollama(context: str, question: str, model="qwen2.5:3b", stream=True):
+def stream_ollama(context: str, question: str, model="qwen2.5:3b"):
     prompt = f"""
-You are a helpful assistant for Arrow Conveyancing website.
+You are an AI assistant for Arrow Conveyancing company.
 
 Use ONLY the context below.
-If not found, say: "I don't know based on the website data."
+If not found, say: "Please contact support."
 
 Context:
 {context}
@@ -15,15 +14,13 @@ Question:
 {question}
 """
 
-    response = ollama.chat(
+    stream = ollama.chat(
         model=model,
         messages=[{"role": "user", "content": prompt}],
-        stream=stream
+        stream=True
     )
 
-    if stream:
-        for chunk in response:
-            if "message" in chunk and "content" in chunk["message"]:
-                yield chunk["message"]["content"]
-    else:
-        return response["message"]["content"]
+    for chunk in stream:
+        content = chunk.get("message", {}).get("content", "")
+        if content:
+            yield content
