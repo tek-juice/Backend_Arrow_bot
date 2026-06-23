@@ -14,6 +14,7 @@ flask-cors = "*"
 gunicorn = "*"
 ollama = "*"
 flasgger = "*"
+sentence-transformers = "*"
 
 [dev-packages]
 
