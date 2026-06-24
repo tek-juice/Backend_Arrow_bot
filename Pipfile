@@ -4,7 +4,6 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-python-dotenv = "*"
 google-generativeai = "*"
 requests = "*"
 beautifulsoup4 = "*"
@@ -15,6 +14,11 @@ gunicorn = "*"
 ollama = "*"
 flasgger = "*"
 sentence-transformers = "*"
+flask-jwt-extended = "*"
+flask-sqlalchemy = "*"
+python-dotenv = "*"
+flask-migrate = "*"
+psycopg2-binary = "*"
 
 [dev-packages]
 
