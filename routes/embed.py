@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 from config.extensions import db
 from models.user import DocumentChunk
-from config.embeddings import get_embedding
+from config.embeddings import get_embeddings
 from flasgger import swag_from
 
 ingest_bp =  Blueprint("ingest",__name__)
@@ -71,27 +71,30 @@ def ingest_document():
 
     if not title or not text:
         return jsonify({"error": "title and text are required"}), 400
-    
-    chunks = [text[i:i+800]for i in range(0, len(text), 800)]
-    saved_count = 0
 
-    for chunk in chunks:
-        embedding = get_embedding(chunk)
+    chunks = [text[i:i+800] for i in range(0, len(text), 800)]
 
-        doc = DocumentChunk(
-            title=title,
-            chunk=chunk,
-            embedding=embedding
+    print(f"Generating embeddings for {len(chunks)} chunks...")
+
+    embeddings = get_embeddings(chunks)
+
+    documents = []
+
+    for chunk, embedding in zip(chunks, embeddings):
+        documents.append(
+            DocumentChunk(
+                title=title,
+                chunk=chunk,
+                embedding=embedding
+            )
         )
 
-        db.session.add(doc)
-        saved_count += 1
-
+    db.session.bulk_save_objects(documents)
     db.session.commit()
 
     return jsonify({
         "message": "document ingested successfully",
-        "chunks_saved": saved_count
+        "chunks_saved": len(documents)
     })
 
 @ingest_bp.route("/chunks", methods=["GET"])
@@ -124,7 +127,7 @@ def get_chunks():
         for c in chunks
     ])
 
-@ingest_bp.route("/chunks<int:chunk_id>", methods=["DELETE"])
+@ingest_bp.route("/chunks/<int:chunk_id>", methods=["DELETE"])
 @swag_from({
     "tags": ["Vector Database"],
     "description": "Delete a document chunk and its embedding from the database",
