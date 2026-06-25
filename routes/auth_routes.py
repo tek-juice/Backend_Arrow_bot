@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 from werkzeug.security import generate_password_hash, check_password_hash
 from models.user import User
-from extensions import db
+from config.extensions import db
 from flasgger import swag_from
 from functools import wraps
 
