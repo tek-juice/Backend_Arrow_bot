@@ -5,6 +5,7 @@ from flasgger import Swagger
 from routes.home_routes import home_bp
 from routes.auth_routes import auth_bp
 from routes.embed import ingest_bp
+from routes.chat_routes import chat_bp
 
 from config.extensions import db, jwt, migrate
 from dotenv import load_dotenv
@@ -47,6 +48,7 @@ def create_app():
     app.register_blueprint(home_bp)
     app.register_blueprint(auth_bp, url_prefix="/auth")
     app.register_blueprint(ingest_bp, url_prefix="/api")
+    app.register_blueprint(chat_bp, url_prefix="/chat")
 
     @app.route("/")
     def root():

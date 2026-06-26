@@ -23,6 +23,7 @@ pgvector = "*"
 sqlalchemy = "*"
 sentence-transformers = "*"
 fastembed = "*"
+openai = "*"
 
 [dev-packages]
 
