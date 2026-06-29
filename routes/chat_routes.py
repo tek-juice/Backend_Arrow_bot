@@ -1,5 +1,7 @@
 from flask import Blueprint, request, Response, stream_with_context, jsonify
+from config.session_message_service import save_message, get_or_create_session
 from config.nvidia import stream_answer
+from models.user import ChatMessage, ChatSession
 from flasgger import swag_from
 
 chat_bp = Blueprint("chat", __name__)
@@ -41,23 +43,118 @@ chat_bp = Blueprint("chat", __name__)
     }
 })
 def chat():
+
     data = request.get_json() or {}
+
     question = data.get("question")
+    session_uuid = data.get("session_id")
 
     if not question:
-        return jsonify({
-            "error": "A question is required"
-        }), 400
-    
+        return jsonify({"error": "A question is required"}), 400
+
+    session = get_or_create_session(session_uuid)
+
+    save_message(
+        session_id=session.id,
+        sender="user",
+        content=question
+    )
+
     def generate():
-        yield "ROUTE HIT\n"
+
+        full_response = ""
+
         for token in stream_answer(question):
-            yield token + "\n"
-    
+
+            full_response += token
+            yield token
+
+        save_message(
+            session_id=session.id,
+            sender="assistant",
+            content=full_response
+        )
+
     return Response(
         stream_with_context(generate()),
         mimetype="text/plain",
         headers={
-            "X-Accel-Buffering": "no"   # prevents buffering (important on some setups)
-        }
+             "X-Session-Id": session.session_uuid,
+            "X-Accel-Buffering": "no",
+        },
     )
+
+@chat_bp.route("/chat/history/<session_uuid>", methods=["GET"])
+@swag_from({
+    "tags": ["Chatbot"],
+    "summary": "Get chat history for a session",
+    "description": "Retrieves all messages (user and assistant) for a given chat session UUID.",
+    
+    "parameters": [
+        {
+            "name": "session_uuid",
+            "in": "path",
+            "required": True,
+            "type": "string",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
+        }
+    ],
+
+    "responses": {
+        200: {
+            "description": "Chat history retrieved successfully",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "session_id": {"type": "string"},
+                    "name": {"type": "string"},
+                    "email": {"type": "string"},
+                    "messages": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "id": {"type": "integer"},
+                                "role": {"type": "string", "example": "user"},
+                                "content": {"type": "string"},
+                                "created_at": {"type": "string"}
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        404: {
+            "description": "Session not found"
+        }
+    }
+})
+def get_chat_history(session_uuid):
+    session = ChatSession.query.filter_by(
+        session_uuid = session_uuid
+    ).first()
+
+    if not session:
+        return jsonify({
+            "error": "session not found"
+        }), 404
+    
+    messages = ChatMessage.query.filter_by(
+        session_id=session.id
+    ).order_by(ChatMessage.created_at.asc()).all()
+
+    return jsonify({
+        "session_id": session.session_uuid,
+        "name": session.name,
+        "email": session.email,
+        "messages": [
+            {
+                "id": msg.id,
+                "role": msg.sender,
+                "content": msg.content,
+                "created_at": msg.created_at.isoformat()
+            }
+
+            for msg in messages
+        ]
+    }),200
