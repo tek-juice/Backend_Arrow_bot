@@ -3,6 +3,8 @@ from config.session_message_service import save_message, get_or_create_session
 from config.nvidia import stream_answer
 from models.user import ChatMessage, ChatSession
 from flasgger import swag_from
+from config.extensions import db
+from datetime import datetime
 
 chat_bp = Blueprint("chat", __name__)
 
@@ -158,3 +160,66 @@ def get_chat_history(session_uuid):
             for msg in messages
         ]
     }),200
+
+@chat_bp.route("/chat/session/<session_uuid>", methods=["PUT"])
+@swag_from({
+    "tags": ["Chat Session"],
+    "description": "Update session name and email using session_uuid",
+    "parameters": [
+        {
+            "name": "session_uuid",
+            "in": "path",
+            "required": True,
+            "type": "string"
+        },
+        {
+            "name": "body",
+            "in": "body",
+            "required": True,
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "email": {"type": "string"}
+                }
+            }
+        }
+    ],
+    "responses": {
+        "200": {"description": "Session updated successfully"},
+        "404": {"description": "Session not found"}
+    }
+})
+def update_session(session_uuid):
+    data = request.get_json() or {}
+
+    name = data.get("name")
+    email = data.get("email")
+
+    session= ChatSession.query.filter_by(
+        session_uuid=session_uuid
+    ).first()
+
+    if not session:
+        return jsonify({
+            "error": "session not found"
+        }), 404
+    
+    if name:
+        session.name =  name
+    
+    if email:
+        session.email = email
+
+    session.updated_at = datetime.utcnow()
+
+    db.session.commit()
+
+    return jsonify({
+        "message": "Name and email updated succefully",
+        "session": {
+            "session_uuid": session_uuid,
+            "name": session.name,
+            "email": session.email
+        }
+    }), 200

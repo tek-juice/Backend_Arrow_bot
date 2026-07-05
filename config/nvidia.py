@@ -41,7 +41,7 @@ Question:
         messages=[{"role": "user", "content": prompt}],
         temperature=0.2,
         stream=True,
-        timeout=30,
+        timeout=120,
     )
 
     for chunk in stream:
