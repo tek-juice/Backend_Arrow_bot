@@ -7,6 +7,8 @@ from routes.auth_routes import auth_bp
 from routes.embed import ingest_bp
 from routes.chat_routes import chat_bp
 
+from config.limiter import limiter
+
 from config.extensions import db, jwt, migrate
 from dotenv import load_dotenv
 import os
@@ -26,6 +28,7 @@ def create_app():
     db.init_app(app)
     jwt.init_app(app)
     migrate.init_app(app, db)
+    limiter.init_app(app)
     CORS(app, origins=["http://localhost:5173", "http://127.0.0.1:5173"])
 
     swagger_config = {

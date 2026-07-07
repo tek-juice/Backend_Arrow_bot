@@ -5,10 +5,12 @@ from models.user import ChatMessage, ChatSession
 from flasgger import swag_from
 from config.extensions import db
 from datetime import datetime
+from config.limiter import limiter
 
 chat_bp = Blueprint("chat", __name__)
 
 @chat_bp.route("/chat", methods=["POST"])
+@limiter.limit("38 per miniute")
 @swag_from({
     "tags": ["Chatbot"],
     "summary": "Ask the AI assistant a question",
@@ -66,7 +68,7 @@ def chat():
 
         full_response = ""
 
-        for token in stream_answer(question):
+        for token in stream_answer(session.id, question):
 
             full_response += token
             yield token
@@ -222,4 +224,92 @@ def update_session(session_uuid):
             "name": session.name,
             "email": session.email
         }
+    }), 200
+
+@chat_bp.route("/users", methods=["GET"])
+@swag_from({
+    "tags": ["Admin Chat"],
+    "summary": "Get all chat sessions",
+    "description": "Returns all chat sessions ordered by most recently updated.",
+    "responses": {
+        200: {
+            "description": "List of chat sessions"
+        }
+    }    
+})
+
+def get_chat_sessions():
+    sessions = ChatSession.query.order_by(
+        ChatSession.updated_at.desc()
+    ).all()
+
+    return jsonify([
+        {
+            "session_uuid": session.session_uuid,
+            "name": session.name,
+            "email": session.email,
+            "created_at": session.created_at.isoformat(),
+            "updated_at": session.updated_at.isoformat(),
+            "message_count": len(session.messages)
+        }
+        for session in sessions
+    ]), 200
+
+@chat_bp.route("/users/<string:session_uuid>", methods=["GET"])
+@swag_from({
+    "tags": ["Admin Chat"],
+    "summary": "Get a chat session",
+    "description": "Returns a chat session together with all exchanged messages.",
+    "parameters": [
+        {
+            "name": "session_uuid",
+            "in": "path",
+            "required": True,
+            "schema": {
+                "type": "string"
+            }
+        }
+    ],
+    "responses": {
+        200: {
+            "description": "Chat session and messages"
+        },
+        404: {
+            "description": "Session not found"
+        }
+    }
+})
+
+def get_chat_session_messages(session_uuid):
+
+    session = ChatSession.query.filter_by(
+        session_uuid=session_uuid
+    ).first()
+
+    if not session:
+        return jsonify({
+            "error": "Session not found"
+        }), 404
+
+    messages = ChatMessage.query.filter_by(
+        session_id=session.id
+    ).order_by(ChatMessage.created_at.asc()).all()
+
+    return jsonify({
+        "session_uuid": session.session_uuid,
+        "name": session.name,
+        "email": session.email,
+        "created_at": session.created_at.isoformat(),
+        "updated_at": session.updated_at.isoformat(),
+        "message_count": len(messages),
+
+        "messages": [
+            {
+                "id": msg.id,
+                "sender": msg.sender,
+                "content": msg.content,
+                "created_at": msg.created_at.isoformat()
+            }
+            for msg in messages
+        ]
     }), 200
